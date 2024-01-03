@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "sc_var"
+version = "0.1.0"
+description = "An approch for interpreting disease-associated human variants using single-cell epigenomics"
+authors = ["Gefei Z <gefeizhao@163.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+scanpy = "^1.9.6"
+scdrs = "^1.0.2"
+scipy = "^1.11.4"
+mygene = "^3.2.2"
+seaborn = "^0.13.1"
+matplotlib = "^3.8.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
