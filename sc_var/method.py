@@ -1,6 +1,7 @@
 # package load
 import os
 import sys
+import csv
 import numpy as np
 import pandas as pd
 import scanpy as sc
@@ -26,6 +27,125 @@ import matplotlib.patches as patches
 #####                                ANNOTATION                                    ######
 #########################################################################################
 
+def get_p2g_conn(cicero_conn,fdata):
+    
+    
+    '''
+    A function help to get the peak-gene conn from cicero_conn and cds fdata
+
+    cicero_conn: output file from cicero conns 
+
+    fdata: from cds fdata 
+    Can get from cicero R code:
+    after run cicero, get the annoration
+    input_cds <- annotate_cds_by_site(input_cds, gene_annotation_sub)
+    fdata<-fData(input_cds)
+    
+    AFTER RUN THIS FUCTION 
+    return a txt file with ['gene','chr','start','end'] columns
+    which can be used for snp_peak function as peak_list
+
+    '''
+    cpeak=pd.read_csv(cicero_conn,sep='\t')
+    fdata=pd.read_csv(fdata,sep='\t',index_col=0)
+    fdata.reset_index(inplace=True)
+    fdata=fdata[['index','gene']]
+    conn=cpeak[['Peak1','Peak2']]
+    conn['peak1.gene_name']=conn['Peak1'].map(fdata.set_index('index')['gene'])
+    conn['peak2.gene_name']=conn['Peak2'].map(fdata.set_index('index')['gene'])
+    
+    #drop peak1 and peak2 contain chrx and chry
+    conn=conn[conn['Peak1'].str.contains('chrX')==False]
+    conn=conn[conn['Peak1'].str.contains('chrY')==False]
+    conn=conn[conn['Peak2'].str.contains('chrX')==False]
+    conn=conn[conn['Peak2'].str.contains('chrY')==False]
+
+    conn=conn[conn['peak1.gene_name'].notnull()|conn['peak2.gene_name'].notnull()]
+    conn['gene']=conn['peak1.gene_name'].astype(str)+','+conn['peak2.gene_name'].astype(str)
+    #repalce nan, with ' ' in gene
+    conn['gene']=conn['gene'].str.replace('nan,','').str.replace(',nan',' ').str.replace('nan','')
+    conn['gene']=conn['gene'].str.replace(' ',',')
+    conn_filter=conn.assign(gene=conn['gene'].str.split(',')).explode('gene')
+    p2=conn_filter[['Peak2','gene']]
+    p2.rename(columns={'Peak2':'Peak','gene':'gene'},inplace=True)
+    p1=conn_filter[['Peak1','gene']]
+    p1.rename(columns={'Peak1':'Peak','gene':'gene'},inplace=True)
+    p2g = pd.concat([p1, p2], ignore_index=True)
+    p2g=p2g[p2g['gene'].notnull()]
+    p2g=p2g[p2g['gene']!='']
+    p2g.drop_duplicates(inplace=True)
+    p2g['chr']=p2g['Peak'].str.split('-').str[0]
+    p2g['start']=p2g['Peak'].str.split('-').str[1]
+    p2g['end']=p2g['Peak'].str.split('-').str[2]
+    p2g=p2g[['gene','chr','start','end']]
+    #get work path and save the result
+    work_path=os.getcwd()
+    p2g.to_csv(work_path+'/p2g_conn.txt',sep='\t',index=False)
+    
+    return p2g
+   
+   
+def read_gwas(gwas_file):
+    '''
+    Read GWAS data from txt file
+    GWAS file  should like 
+    chr pos rsids pval
+    if GWAS data from finn database
+    USE load_snp_list function
+    ''' 
+    snp_list=pd.read_csv(gwas_file,sep='\t')
+    snp_list['chr']=snp_list['chr'].astype(str)
+    snp_list['rsids'] = snp_list['rsids'].astype(str)
+    snp_list['pos'] = snp_list['pos'].astype(int)
+    snp_list.sort_values(['chr', 'pos'], inplace=True)
+    snp_list.reset_index(drop=True, inplace=True)
+    return snp_list
+    
+def load_snp_list(gwas_file):
+
+    '''
+    Load GWAS data from finn database
+    '''
+    
+    snp_list = pd.read_csv(gwas_file, 
+                            sep='\t',
+                            dtype={'#chrom':str,'pos':int,'rsids':str,'pval':float})
+    snp_list['chr']='chr'+ snp_list['#chrom']
+    snp_list=snp_list.drop(columns=['#chrom'])
+    #for rsids column split the data "," to two rows
+    snp_list=snp_list.assign(rsids=snp_list['rsids'].str.split(',')).explode('rsids')
+    snp_list[['rsids']]=snp_list['rsids'].str.split(',',expand=True)
+    #drop row with null rsid
+    snp_list=snp_list.dropna(subset=['rsids'],axis=0)
+    snp_list=snp_list.dropna(subset=['pval'],axis=0)
+    snp_list.sort_values(['chr', 'pos'], inplace=True)
+    snp_list.reset_index(drop=True, inplace=True)
+    #save snp_list as txt file named by phenotype
+    order=['chr','pos','rsids','pval']
+    snp_list=snp_list[order]
+    snp_list.to_csv(phenotype,sep='\t',index=False)
+    
+    return snp_list    
+
+
+def load_peak_data(peak_file):
+
+    '''
+    Load peak to gene file from cicero
+    if only have connection file from cicero
+    Use get_p2g_conn function to get peak to gene file
+    '''
+
+    peak_list = pd.read_csv(peak_file,sep='\t')
+    peak_list['chr'] = peak_list['chr'].astype(str)
+    peak_list['start'] = peak_list['start'] .astype(int)
+    peak_list['end'] = peak_list['end'].astype(int)
+    peak_list.sort_values(['chr', 'start', 'end'], ignore_index=True, inplace=True)
+    peak_list.reset_index(drop=True, inplace=True)
+
+    return peak_list
+    
+   
 
 def annotate(overlap_matrix,gene_cor,dmagma_file,disease_name):
     '''
@@ -63,11 +183,7 @@ def annotate(overlap_matrix,gene_cor,dmagma_file,disease_name):
     cmagma['SNPs'] = cmagma.apply(lambda x: str(x['SNPs']) + ' ' + str(x['snps']), axis=1)
     cmagma['SNPs']=cmagma['SNPs'].str.replace('nan',' ')
     cmagma=cmagma[['GENE','POS','SNPs']]
-
-    cmagma_annot=open(disease_name+'cmagma.genes.annot','w')
-    cmagma_annot.write(convert.to_string(index=False,header=False))
-    cmagma_annot.close()
-    
+    cmagma.to_csv(disease_name+'cmagma.genes.annot',index=False,header=False,sep='\t',quoting=csv.QUOTE_NONE)
     return cmagma
 
 
@@ -97,6 +213,7 @@ def dmagma(magma_file):
     dmagma['SNPs']=dmagma['SNPs'].apply(lambda x: list(set(x)))
     dmagma['SNPs']=dmagma['SNPs'].astype(str)
     dmagma['SNPs']=dmagma['SNPs'].str.replace('\[|\]|\'','')
+    dmagma['SNPs'] = dmagma['SNPs'].str.replace('[', '').str.replace(']', '').str.replace("'", '')
     dmagma['SNPs']=dmagma['SNPs'].str.replace(',',' ')
     return dmagma
 
@@ -187,6 +304,7 @@ def gene_corr(gff3_file,peak_file):
     gencode_genes = gencode_genes.set_index('gene_name')
     
     peak_file['g_chr'], peak_file['g_start'], peak_file['g_end'] = zip(*peak_file['gene'].apply(lambda x: fetch_gene_coords(x)))
+    peak_file=peak_file[peak_file['g_chr'].str.contains('NA')==False]
     gene_cor=peak_file[['gene','g_chr','g_start','g_end']]
     gene_cor=gene_cor.drop_duplicates(subset=['gene'],keep='first')
     gene_cor['g_chr']=gene_cor['g_chr'].str.replace('chr','')
@@ -234,7 +352,23 @@ def merge_annotate(ori_annot,link_annot):
     return merge_annotate
 
 
-
+def save_d2gs(gs_path: str, dict_gs: dict) -> None:
+    """Save gene set file (.gs file).
+    """
+    df_gs: Dict = {
+        "TRAIT": [],
+        "GENESET": [],
+    }
+    for trait in dict_gs:
+        df_gs["TRAIT"].append(trait)
+        if isinstance(dict_gs[trait], tuple):
+            df_gs["GENESET"].append(
+                ",".join([str(g) + ":" + str(w) for g, w in zip(*dict_gs[trait])])
+            )
+        else:
+            df_gs["GENESET"].append(",".join(dict_gs[trait]))
+    pd.DataFrame(df_gs).to_csv(gs_path, sep="\t", index=False)
+    
 
 def save_gs(gene_file,disease_name,gs_path):
 
@@ -286,52 +420,67 @@ def save_gs(gene_file,disease_name,gs_path):
 def get_peak_weights(overlap_matrix):
 
     '''
-    OPTIONAL
     For each peak, determine the lowest p-value of all SNPs that overlap with it.
     '''
 
     peak_weights = overlap_matrix.groupby(['chr', 'start', 'end']).agg({'pval': 'min'})
+    #if min p is 0, replace it with 1e-10
+    peak_weights['pval']=peak_weights['pval'].replace(0,1e-10)
     overlap_matrix['zscore']= np.abs(scipy.stats.norm.ppf(overlap_matrix['pval']/ 2))
     #keep zcore corresponding to min p
     peak_weights=pd.merge(peak_weights,overlap_matrix[['chr','start','end','zscore']],on=['chr','start','end'],how='left')
     peak_weights.reset_index(inplace=True)
     peak_weights.rename({'zscore': 'weight'}, axis=1, inplace=True)
-    peak_weights['GENE']='chr'+peak_weights['chr'].astype(str)+'-'+peak_weights['start'].astype(str)+'-'+peak_weights['end'].astype(str)
+    peak_weights['GENE']=peak_weights['chr'].astype(str)+'-'+peak_weights['start'].astype(str)+'-'+peak_weights['end'].astype(str)
 
     peak_weights.sort_values(['weight'],ascending=False,inplace=True)
     peak_weights.drop_duplicates(subset=['GENE'],keep='first',inplace=True)
     peak_weights=peak_weights[['GENE','weight']]
     return peak_weights
 
+def load_genes(gene_file):
+    gene_file=pd.read_csv(gene_file,sep=r'\s+')
+    gene_id=mg.querymany(gene_file['GENE'], scopes='entrezgene', fields='symbol', species='human', as_dataframe=True)['symbol']
+    gene_id=pd.DataFrame(gene_id)
+    gene_id=gene_id.reset_index('query')
+    gene_id=gene_id.rename(columns={'query':'GENE'})
+    gene_id['GENE']=gene_id['GENE'].astype('str')
+    gene_file['GENE']=gene_file['GENE'].astype('str')
+    gene_file=pd.merge(gene_file,gene_id,on='GENE',how='left')
+    return gene_file
+
+def drop_dup(gene_file):
+    gene_file=gene_file.sort_values(by='P')
+    gene_file=gene_file.drop_duplicates(subset='symbol',keep='first')
+    return gene_file
 
 
-
-
-
-def scads(adata,overlap_matrix,disease_name):
+def scads(adata,overlap_matrix,cmagma_result,disease_name):
 
     '''
     adata: AnnData object
+    
+    overlap_matrix: output from snp_peak function
     For each peak, determine the lowest p-value of all SNPs that overlap with it.
     peak_weights can also get from get_peak_weights function 
+    
+    cmagma_result: output from cmagma pipline gene analysis results
+    see /magma \ --bfile /g1000_eur \--pval {gwas} use='rsids,pval' N=n\
+    --gene-annot {output from annotate fuction *.cmagma.genes.annot} \--out outfile
+    
     disease_name: disease name interested from GWAS
 
     '''
-
-    peak_weights = overlap_matrix.groupby(['chr', 'start', 'end']).agg({'pval': 'min'})
-    overlap_matrix['zscore']= np.abs(scipy.stats.norm.ppf(overlap_matrix['pval']/ 2))
-    #keep zcore corresponding to min p
-    peak_weights=pd.merge(peak_weights,overlap_matrix[['chr','start','end','zscore']],on=['chr','start','end'],how='left')
-    peak_weights.reset_index(inplace=True)
-    peak_weights.rename({'zscore': 'weight'}, axis=1, inplace=True)
-    peak_weights['GENE']='chr'+peak_weights['chr'].astype(str)+'-'+peak_weights['start'].astype(str)+'-'+peak_weights['end'].astype(str)
-
-    peak_weights.sort_values(['weight'],ascending=False,inplace=True)
-    peak_weights.drop_duplicates(subset=['GENE'],keep='first',inplace=True)
-    peak_weights=peak_weights[['GENE','weight']]
-
-    dict_gs = {disease_name: (peak_weights['GENE'].tolist(), peak_weights['weight'].tolist())}
+    cmagma_gene=load_genes(cmagma_result)
+    cmagma_gene=drop_dup(cmagma_gene)
+    cmagma_gene_sig=cmagma_gene[cmagma_gene['P']<0.05]
+    overlap_matrix=overlap_matrix[overlap_matrix['gene'].isin(cmagma_gene_sig['symbol'])]
+    
+    peak_weights = get_peak_weights(overlap_matrix)
+    peak_weights=peak_weights.rename(columns={'weight':disease_name})
+    dict_gs = {disease_name: (peak_weights['GENE'].tolist(), peak_weights[disease_name].tolist())}
     dict_df_score = dict()
+    scdrs.preprocess(adata,  n_mean_bin=20, n_var_bin=20, copy=False)
     for trait in dict_gs:
         gene_list, gene_weights = dict_gs[trait]
         dict_df_score[trait] = scdrs.score_cell(data=adata,
@@ -381,11 +530,12 @@ def stat_analysis(
 
         df_res = pd.DataFrame(index=group_list, columns=res_cols)
         df_res.index.name = "group"
-
+        pvals = df_reg["pval"].values
+        pvals[pvals == 0] = 1e-10 
         df_fdr = pd.DataFrame(
             {"fdr": multipletests(df_reg["pval"].values, method="fdr_bh")[1]},
-            index=df_reg.index,
-        )
+            index=df_reg.index,)
+
 
         for group in group_list:
             group_cell_list = list(df_reg.index[df_reg[group_col] == group])
@@ -410,6 +560,8 @@ def stat_analysis(
             )
             mc_z = (score_q95 - v_ctrl_score_q95.mean()) / v_ctrl_score_q95.std()
             df_res.loc[group, ["assoc_mcp", "assoc_mcz"]] = [mc_p, mc_z]
+            
+        dict_df_res[group_col] = df_res      
 
     return dict_df_res
 
@@ -419,36 +571,138 @@ def stat_analysis(
 #####                                Visualization                                 ######
 #########################################################################################
 
+from statsmodels.stats.multitest import multipletests
+import matplotlib.transforms as mtrans
+import matplotlib.patches as patches
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+
+def plot_group_stats(dict_df_stats=None):
+
+    
+    trait_list = list(dict_df_stats.keys())
+    # compile df_fdr_prop, df_assoc_fdr, df_hetero_fdr from dict_df_stats
+    df_fdr_prop = pd.concat(
+        [
+            -np.log10(dict_df_stats[trait]["assoc_mcp"])+1 
+            
+            for trait in trait_list
+        ],
+        axis=1,
+    ).T
+
+
+    df_assoc_fdr = pd.concat(
+        [dict_df_stats[trait]["assoc_mcp"] for trait in trait_list], axis=1
+    ).T
+
+    df_assoc_fdr = pd.DataFrame(
+        multipletests(df_assoc_fdr.values.flatten(), method="fdr_bh")[1].reshape(
+            df_assoc_fdr.shape
+        ),
+        index=df_assoc_fdr.index,
+        columns=df_assoc_fdr.columns,
+    )
+
+
+    df_hetero_fdr = pd.concat(
+        [dict_df_stats[trait]["assoc_mcp"] for trait in trait_list], axis=1
+    ).T
+    df_hetero_fdr = pd.DataFrame(
+        multipletests(df_hetero_fdr.values.flatten(), method="fdr_bh")[1].reshape(
+            df_hetero_fdr.shape
+        ),
+            index=df_hetero_fdr.index,
+            columns=df_hetero_fdr.columns,
+        )
+    
+
+    df_fdr_prop.index = trait_list
+
+    df_assoc_fdr.index = trait_list
+  
+    df_hetero_fdr.index = trait_list
+    
+
+    df_hetero_fdr = df_hetero_fdr.map(lambda x: "" if x < 0.05 else "")
+    df_hetero_fdr[df_assoc_fdr > 0.1] = ""
+
+    fig, ax = plot_heatmap(
+        df_fdr_prop,
+        squaresize=40,
+        heatmap_annot=df_hetero_fdr,
+        heatmap_annot_kws={"color": "blue", "size": 8},
+        heatmap_cbar_kws=dict(
+            use_gridspec=False, location="top", fraction=0.01, pad=0.3, drawedges=True),
+        heatmap_vmin=0,
+        heatmap_vmax=4,
+        colormap_n_bin=8,
+    )
+
+    small_squares(
+        ax,
+        pos=[(y, x) for x, y in zip(*np.where(df_assoc_fdr < 0.05))],
+        size=0.6,
+        linewidth=0.5,
+    )
+
+    cb = ax.collections[0].colorbar
+    cb.ax.tick_params(labelsize=4)
+    #cb.set_ticks([-4.0, 0, 4.0])
+    #cb.ax.set_xticklabels(["-4", "0", "4"], size=7)
+    #cb.ax.set_title("Prop. of sig. cells (FDR < 0.1)", fontsize=8)
+    cb.ax.set_title("-log10 P", fontsize=8)
+    cb.outline.set_edgecolor("black")
+    cb.outline.set_linewidth(1)
+
+    plt.tight_layout()
+    
+    
+    
+def discrete_cmap(N, base_cmap=None, start_white=True):
+    base = plt.colormaps.get_cmap(base_cmap)
+    color_list = base(np.linspace(0, 1, N))
+    if start_white:
+        color_list[0, :] = 1.0
+    cmap_name = base.name + str(N)
+    return base.from_list(cmap_name, color_list, N)
+
 
 
 def plot_heatmap(
     df,
     dpi=150,
-    squaresize=20,
+    squaresize=10,
     heatmap_annot=None,
-    heatmap_annot_kws={"color": "black", "size": 4},
+    heatmap_annot_kws={"color": "black", "size": 10},
     heatmap_linewidths=0.5,
     heatmap_linecolor="gray",
     heatmap_xticklabels=True,
     heatmap_yticklabels=True,
     heatmap_cbar=True,
-    heatmap_cbar_kws=dict(use_gridspec=False, location="top", fraction=0.03, pad=0.01),
-    heatmap_vmin=0.0,
-    heatmap_vmax=1.0,
+    heatmap_cbar_kws=dict(use_gridspec=False, location="top", fraction=0.05, pad=0.1),
+    heatmap_vmin=0,
+    heatmap_vmax=4.0,
     xticklabels_rotation=90,
-    colormap_n_bin=10,
+    colormap_n_bin=8,
 ):
-    figwidth = df.shape[1] * squaresize / float(dpi)
+    figwidth = df.shape[1] * (squaresize) / float(dpi)
     figheight = df.shape[0] * squaresize / float(dpi)
+    #figwidth = 8
+    #figheight = 8
     fig, ax = plt.subplots(1, figsize=(figwidth, figheight), dpi=dpi)
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax.set_facecolor("silver")
+    ax.invert_yaxis()
+    #ax.yaxis.set_label_position("right")
+    #ax.yaxis.tick_right()
     sns.heatmap(
         df,
         annot=heatmap_annot,
         annot_kws=heatmap_annot_kws,
         fmt="",
-        cmap=discrete_cmap(colormap_n_bin, "RdPu"),
+        cmap=discrete_cmap(colormap_n_bin, "RdYlBu_r"),
         linewidths=heatmap_linewidths,
         linecolor=heatmap_linecolor,
         square=True,
@@ -462,6 +716,9 @@ def plot_heatmap(
     )
 
     plt.yticks(fontsize=8)
+
+    for tick_label in ax.axes.get_yticklabels():
+        tick_label.set_color("black")
     ax.set_xticklabels(
         ax.get_xticklabels(),
         rotation=xticklabels_rotation,
@@ -474,18 +731,14 @@ def plot_heatmap(
     for t in ax.get_xticklabels():
         t.set_transform(t.get_transform() + trans)
     return fig, ax
-
-
-def discrete_cmap(N, base_cmap=None, start_white=True):
-    base = plt.cm.get_cmap(base_cmap)
-    color_list = base(np.linspace(0, 1, N))
-    if start_white:
-        color_list[0, :] = 1.0
-    cmap_name = base.name + str(N)
-    return base.from_list(cmap_name, color_list, N)
-
+    
+    
 def small_squares(ax, pos, size=1, linewidth=0.8):
+    """
+    Draw many small squares on ax, given the positions of
+    these squares.
 
+    """
     for xy in pos:
         x, y = xy
         margin = (1 - size) / 2
@@ -494,81 +747,8 @@ def small_squares(ax, pos, size=1, linewidth=0.8):
             size,
             size,
             linewidth=linewidth,
-            ls='--',
             edgecolor="black",
             facecolor="none",
-            zorder=40,
+            zorder=15,
         )
         ax.add_patch(rect)
-
-
-
-
-def plot_stat(dict_df_stats=None):
-
-    
-    trait_list = list(dict_df_stats.keys())
-    # compile df_fdr_prop, df_assoc_fdr, df_hetero_fdr from dict_df_stats
-    df_fdr_prop = pd.concat(
-        [
-            dict_df_stats[trait]["n_fdr_0.1"] / dict_df_stats[trait]["n_cell"]
-            for trait in trait_list
-        ],
-        axis=1,
-    ).T
-    df_assoc_fdr = pd.concat(
-        [dict_df_stats[trait]["assoc_mcp"] for trait in trait_list], axis=1
-    ).T
-    df_assoc_fdr = pd.DataFrame(
-        multipletests(df_assoc_fdr.values.flatten(), method="fdr_bh")[1].reshape(
-            df_assoc_fdr.shape
-        ),
-        index=df_assoc_fdr.index,
-        columns=df_assoc_fdr.columns,
-    )
-    df_hetero_fdr = pd.concat(
-        [dict_df_stats[trait]["assoc_mcz"] for trait in trait_list], axis=1
-    ).T
-    df_hetero_fdr = pd.DataFrame(
-        multipletests(df_hetero_fdr.values.flatten(), method="fdr_bh")[1].reshape(
-            df_hetero_fdr.shape
-        ),
-            index=df_hetero_fdr.index,
-            columns=df_hetero_fdr.columns,
-        )
-    df_fdr_prop.index = trait_list
-    df_assoc_fdr.index = trait_list
-    df_hetero_fdr.index = trait_list
-    
-
-    df_hetero_fdr = df_hetero_fdr.applymap(lambda x: "" if x < 0.05 else "")
-    df_hetero_fdr[df_assoc_fdr > 0.05] = ""
-
-    fig, ax = plot_heatmap(
-        df_fdr_prop,
-        squaresize=40,
-        heatmap_annot=df_hetero_fdr,
-        heatmap_annot_kws={"color": "blue", "size": 8},
-        heatmap_cbar_kws=dict(
-            use_gridspec=False, location="top", fraction=0.03, pad=0.1, drawedges=True
-        ),
-        heatmap_vmin=0,
-        heatmap_vmax=0.2,
-        colormap_n_bin=3,
-    )
-
-    small_squares(
-        ax,
-        pos=[(y, x) for x, y in zip(*np.where(df_assoc_fdr < 0.05))],
-        size=0.6,
-        linewidth=0.5,
-    )
-
-    cb = ax.collections[0].colorbar
-    cb.ax.tick_params(labelsize=8)
-
-    cb.ax.set_title("Prop. of sig. cells", fontsize=8)
-    cb.outline.set_edgecolor("black")
-    cb.outline.set_linewidth(1)
-
-    plt.tight_layout()
