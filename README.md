@@ -1,13 +1,13 @@
 # SC-VAR
 
-An approach to interpreting disease-associated human variants using single-cell epigenomics
+Here we report a human variants interpretation software for single cell data, named SC-VAR. 
 
 
 # What can sc-var do?
 
-Identify risk genes, gene sets, and cells related to different stages and diseases. 
+This tool can interpret disease-related risks with whole genome wide (including both coding and non-coding regions) variants from GWAS studies and single-cell data on three layers: risk genes, gene sets, and cell types.
 
-Infer cell types involved in complex traits and diseases using single-cell epigenomes AND does not rely on any other annotations and other Omics data. 
+
 
 
 # How to install?
@@ -20,7 +20,8 @@ check https://pypi.org/project/sc-var/
 ## About
 
 
-![sc_var](https://github.com/gefeiZ/sc_var/assets/116159260/9a37b915-641d-48d6-aa73-97c6f3684b41)
+
+![GB_fig1](https://github.com/gefeiZ/sc_var/assets/116159260/60245793-414e-434d-94ce-6dfd8a0500e2)
 
 
 
@@ -28,10 +29,12 @@ check https://pypi.org/project/sc-var/
 ## Usage
 
 Check Usage.ipynb for details
+We provide Vignettes for the three analytical branches
+
 
 Data request: 
 
-Single cell ATAC-seq data &
-Peak co-accessibility Data &
+Single cell data &
+Peak co-accessibility Data or Peak to gene linkage Data (which could obtained from single cell data using cicero or signac) &
 GWAS data 
 
