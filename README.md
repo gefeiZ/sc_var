@@ -1,6 +1,6 @@
 # SC-VAR
 
-Here we report a human variants interpretation software for single cell data, named SC-VAR. 
+Here we report a human variants interpreter, named SC-VAR. 
 
 
 # What can sc-var do?
@@ -20,8 +20,8 @@ check https://pypi.org/project/sc-var/
 ## About
 
 
+<img width="916" alt="flowa" src="https://github.com/gefeiZ/sc_var/assets/116159260/a8856142-8b94-409c-8bf8-38f6b7a4bfbc">
 
-![GB_fig1](https://github.com/gefeiZ/sc_var/assets/116159260/60245793-414e-434d-94ce-6dfd8a0500e2)
 
 
 
