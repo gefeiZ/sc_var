@@ -5,7 +5,7 @@ Here we report a human variants interpreter, named SC-VAR.
 
 # What can sc-var do?
 
-This tool can interpret disease-related risks with whole genome wide (including both coding and non-coding regions) variants from GWAS studies and single-cell data on three layers: risk genes, gene sets, and cell types.
+This tool can interpret disease-related risks with whole genome wide (including both coding and non-coding regions) variants from GWAS studies and single-cell data on four layers: risk CREs,risk genes, gene sets, and cell types.
 
 
 
