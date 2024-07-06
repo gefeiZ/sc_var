@@ -20,7 +20,8 @@ check https://pypi.org/project/sc-var/
 ## About
 
 
-<img width="916" alt="flowa" src="https://github.com/gefeiZ/sc_var/assets/116159260/a8856142-8b94-409c-8bf8-38f6b7a4bfbc">
+
+<img width="817" alt="flow1" src="https://github.com/gefeiZ/sc_var/assets/116159260/a11bf15a-2d65-4506-b6a1-495c2082dd40">
 
 
 
