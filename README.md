@@ -17,10 +17,13 @@ pip install sc-var
 check https://pypi.org/project/sc-var/
 
 
+
+
+
 ## About
+![Fig1](https://github.com/user-attachments/assets/4c41e9d0-9612-4a4a-a011-bf2beab59d3f)
 
 
-[Fig1.pdf](https://github.com/user-attachments/files/16685413/Fig1.pdf)
 
 
 
