@@ -20,8 +20,7 @@ check https://pypi.org/project/sc-var/
 ## About
 
 
-
-<img width="817" alt="flow1" src="https://github.com/gefeiZ/sc_var/assets/116159260/a11bf15a-2d65-4506-b6a1-495c2082dd40">
+[Fig1.pdf](https://github.com/user-attachments/files/16685413/Fig1.pdf)
 
 
 
@@ -30,7 +29,7 @@ check https://pypi.org/project/sc-var/
 ## Usage
 
 Check Usage.ipynb for details
-We provide Vignettes for the three analytical branches
+
 
 
 Data request: 
