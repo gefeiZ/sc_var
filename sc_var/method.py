@@ -19,14 +19,80 @@ from typing import List, Dict, Tuple
 from statsmodels.stats.multitest import multipletests
 import matplotlib.transforms as mtrans
 import matplotlib.patches as patches
-
+import gseapy as gp
+from gseapy import Msigdb
+import episcanpy as epi
 
 
 
 #########################################################################################
-#####                                ANNOTATION                                    ######
+#####                                ANNOTATION Module                             ######
 #########################################################################################
+   
+def read_gwas(gwas_file):
 
+    '''
+    Read GWAS data from txt file
+    GWAS file  should like 
+    chr pos rsids pval
+    chr1 100001 rs123 0.01
+
+    if GWAS data from finn database
+    USE load_snp_list function
+    ''' 
+    snp_list=pd.read_csv(gwas_file,sep='\t')
+    snp_list['chr']=snp_list['chr'].astype(str)
+    snp_list['rsids'] = snp_list['rsids'].astype(str)
+    snp_list['pos'] = snp_list['pos'].astype(int)
+    snp_list.sort_values(['chr', 'pos'], inplace=True)
+    snp_list.reset_index(drop=True, inplace=True)
+    return snp_list
+    
+def load_snp_list(gwas_file):
+
+    '''
+    Load GWAS data from finn database
+    '''
+    
+    snp_list = pd.read_csv(gwas_file, 
+                            sep='\t',
+                            dtype={'#chrom':str,'pos':int,'rsids':str,'pval':float})
+    snp_list['chr']='chr'+ snp_list['#chrom']
+    snp_list=snp_list.drop(columns=['#chrom'])
+    #for rsids column split the data "," to two rows
+    snp_list=snp_list.assign(rsids=snp_list['rsids'].str.split(',')).explode('rsids')
+    snp_list[['rsids']]=snp_list['rsids'].str.split(',',expand=True)
+    #drop row with null rsid
+    snp_list=snp_list.dropna(subset=['rsids'],axis=0)
+    snp_list=snp_list.dropna(subset=['pval'],axis=0)
+    snp_list.sort_values(['chr', 'pos'], inplace=True)
+    snp_list.reset_index(drop=True, inplace=True)
+    #save snp_list as txt file named by phenotype
+    order=['chr','pos','rsids','pval']
+    snp_list=snp_list[order]
+    snp_list.to_csv(gwas_file,sep='\t',index=False)
+    
+    return snp_list    
+
+
+def load_peak_data(peak_file):
+
+    '''
+    Load peak to gene file from cicero
+    if only have co-accessibility link file from cicero
+    Use get_p2g_conn function to get peak to gene file
+    '''
+
+    peak_list = pd.read_csv(peak_file,sep='\t')
+    peak_list['chr'] = peak_list['chr'].astype(str)
+    peak_list['start'] = peak_list['start'] .astype(int)
+    peak_list['end'] = peak_list['end'].astype(int)
+    peak_list.sort_values(['chr', 'start', 'end'], ignore_index=True, inplace=True)
+    peak_list.reset_index(drop=True, inplace=True)
+
+    return peak_list
+    
+    
 def get_p2g_conn(cicero_conn,fdata):
     
     
@@ -82,109 +148,26 @@ def get_p2g_conn(cicero_conn,fdata):
     work_path=os.getcwd()
     p2g.to_csv(work_path+'/p2g_conn.txt',sep='\t',index=False)
     
-    return p2g
-   
-   
-def read_gwas(gwas_file):
-    '''
-    Read GWAS data from txt file
-    GWAS file  should like 
-    chr pos rsids pval
-    if GWAS data from finn database
-    USE load_snp_list function
-    ''' 
-    snp_list=pd.read_csv(gwas_file,sep='\t')
-    snp_list['chr']=snp_list['chr'].astype(str)
-    snp_list['rsids'] = snp_list['rsids'].astype(str)
-    snp_list['pos'] = snp_list['pos'].astype(int)
-    snp_list.sort_values(['chr', 'pos'], inplace=True)
-    snp_list.reset_index(drop=True, inplace=True)
-    return snp_list
+    return p2g    
     
-def load_snp_list(gwas_file):
 
+
+def multi_omics_p2g(p2g_file):
     '''
-    Load GWAS data from finn database
+    Read multi omics peak to gene link file
+    which is output from signac LinkPeaks() function
     '''
-    
-    snp_list = pd.read_csv(gwas_file, 
-                            sep='\t',
-                            dtype={'#chrom':str,'pos':int,'rsids':str,'pval':float})
-    snp_list['chr']='chr'+ snp_list['#chrom']
-    snp_list=snp_list.drop(columns=['#chrom'])
-    #for rsids column split the data "," to two rows
-    snp_list=snp_list.assign(rsids=snp_list['rsids'].str.split(',')).explode('rsids')
-    snp_list[['rsids']]=snp_list['rsids'].str.split(',',expand=True)
-    #drop row with null rsid
-    snp_list=snp_list.dropna(subset=['rsids'],axis=0)
-    snp_list=snp_list.dropna(subset=['pval'],axis=0)
-    snp_list.sort_values(['chr', 'pos'], inplace=True)
-    snp_list.reset_index(drop=True, inplace=True)
-    #save snp_list as txt file named by phenotype
-    order=['chr','pos','rsids','pval']
-    snp_list=snp_list[order]
-    snp_list.to_csv(phenotype,sep='\t',index=False)
-    
-    return snp_list    
+    p2g=pd.read_csv(p2g_file,sep=',')
+    p2g=p2g[['gene','peak']]
+    p2g['chr']=p2g['peak'].str.split('-').str[0].astype(str)
+    p2g['start']=p2g['peak'].str.split('-').str[1].astype(int)
+    p2g['end']=p2g['peak'].str.split('-').str[2].astype(int)
+    p2g=p2g.drop('peak',axis=1)
+    p2g.sort_values(['chr', 'start', 'end'], ignore_index=True, inplace=True)
+    p2g.reset_index(drop=True, inplace=True)
+    return p2g  
 
 
-def load_peak_data(peak_file):
-
-    '''
-    Load peak to gene file from cicero
-    if only have connection file from cicero
-    Use get_p2g_conn function to get peak to gene file
-    '''
-
-    peak_list = pd.read_csv(peak_file,sep='\t')
-    peak_list['chr'] = peak_list['chr'].astype(str)
-    peak_list['start'] = peak_list['start'] .astype(int)
-    peak_list['end'] = peak_list['end'].astype(int)
-    peak_list.sort_values(['chr', 'start', 'end'], ignore_index=True, inplace=True)
-    peak_list.reset_index(drop=True, inplace=True)
-
-    return peak_list
-    
-   
-
-def annotate(overlap_matrix,gene_cor,dmagma_file,disease_name):
-    '''
-    Annotate GWAS SNPs with co_accessibility peaks with gene information
-
-
-    overlap_matrix: output from dis_peak function
-    gene_cor: output from gene_corr function
-    dmagma_file: output from dmagma function
-    disease_name: disease name interested from GWAS
-    '''
-    
-    gene_list=overlap_matrix.groupby('gene')['rsids'].apply(list).reset_index(name='snps')
-    gene_list=pd.merge(gene_list,gene_cor,on='gene',how='left')
-    gene_id=mg.querymany(gene_list['gene'], scopes='symbol', fields='entrezgene', species='human', as_dataframe=True)['entrezgene']
-    gene_id=gene_id.to_frame().reset_index()
-    gene_id.dropna(inplace=True)
-    gene_id=gene_id.rename(columns={'query':'gene'})
-    convert=pd.merge(gene_list,gene_id,on='gene',how='left')
-    convert.drop(columns=['gene'],inplace=True)
-    convert['snps']=convert['snps'].astype(str)
-    convert['snps']=convert['snps'].str.replace("nan","")
-    convert['snps']=convert['snps'].str.replace(',',' ')
-    convert['snps']=convert['snps'].str.replace('[','')
-    convert['snps']=convert['snps'].str.replace(']','')
-    convert['snps']=convert['snps'].str.replace("'","")
-    convert.dropna(inplace=True)
-    convert.dropna(subset=['g_cor'],inplace=True)
-    convert.rename(columns={'entrezgene':'GENE'},inplace=True)
-
-    cmagma=pd.merge(dmagma_file,convert,on='GENE',how='outer')
-    cmagma['POS']=cmagma['POS'].fillna(cmagma['g_cor'])
-    cmagma['SNPs']=cmagma['SNPs'].astype(str)
-    cmagma['snps']=cmagma['snps'].astype(str)
-    cmagma['SNPs'] = cmagma.apply(lambda x: str(x['SNPs']) + ' ' + str(x['snps']), axis=1)
-    cmagma['SNPs']=cmagma['SNPs'].str.replace('nan',' ')
-    cmagma=cmagma[['GENE','POS','SNPs']]
-    cmagma.to_csv(disease_name+'cmagma.genes.annot',index=False,header=False,sep='\t',quoting=csv.QUOTE_NONE)
-    return cmagma
 
 
 
@@ -330,30 +313,89 @@ def merge_annotate(ori_annot,link_annot):
         link=file.readlines()
         link=pd.DataFrame(link)
         file.close()
+    magma=magma.drop([0,1])
     magma.rename(columns={0:'content'},inplace=True)
     magma[['GENE','POS','SNPs']]=magma['content'].str.split(n=2,expand=True)
     magma.drop(columns=['content'],inplace=True)
+    magma['SNPs']=magma['SNPs'].str.replace('nan',' ').str.replace('\n','').str.replace('\t',' ')
     link.rename(columns={0:'content'},inplace=True)
     link[['GENE','POS','SNPs']]=link['content'].str.split(n=2,expand=True)
     link.drop(columns=['content'],inplace=True)
+    link['SNPs']=link['SNPs'].str.replace('nan',' ').str.replace('\n','').str.replace('\t',' ')
+    link['SNPs']=link['SNPs'].str.replace('[','').str.replace(']','').str.replace("'",'')
+    
     merge_annotate=pd.merge(magma,link,on='GENE',how='outer')
-    
     merge_annotate['POS']=merge_annotate['POS_x'].fillna(merge_annotate['POS_y'])
-    
     merge_annotate['SNPs_x']=merge_annotate['SNPs_x'].astype(str)
     merge_annotate['SNPs_y']=merge_annotate['SNPs_y'].astype(str)
     merge_annotate['SNPs'] = merge_annotate.apply(lambda x: str(x['SNPs_x']) + ' ' + str(x['SNPs_y']), axis=1)
-    merge_annotate['SNPs']=merge_annotate['SNPs'].str.replace('nan',' ')
+    #remove duplicates in SNPs 
+    merge_annotate['SNPs']=merge_annotate.apply(lambda x: set(x['SNPs'].split()), axis=1)
+    merge_annotate['SNPs']=merge_annotate['SNPs'].astype(str)
+    merge_annotate['SNPs']=merge_annotate['SNPs'].str.replace('nan',' ').str.replace('\n','').str.replace('\t',' ')
+    merge_annotate['SNPs']=merge_annotate['SNPs'].str.replace("'",'')
+    merge_annotate['SNPs']=merge_annotate['SNPs'].str.replace('{','').str.replace('}','').str.replace(",",' ')
+    merge_annotate['SNPs'] = merge_annotate['SNPs'].drop_duplicates()
+
+
     merge_annotate=merge_annotate[['GENE','POS','SNPs']]
-    output=open('merge_annotate.genes.annot','w')
-    output.write(merge_annotate.to_string(index=False,header=False))
-    output.close()
+    merge_annotate.to_csv(link_annot, sep='\t', index=False, header=False)
+
     
     return merge_annotate
 
 
-def save_d2gs(gs_path: str, dict_gs: dict) -> None:
-    """Save gene set file (.gs file).
+
+
+
+def annotate(overlap_matrix,gene_cor,dmagma_file,disease_name):
+    '''
+    Annotate GWAS SNPs with co_accessibility peaks with gene information
+
+
+    overlap_matrix: output from dis_peak function
+    gene_cor: output from gene_corr function
+    dmagma_file: output from dmagma function
+    disease_name: disease name interested from GWAS
+    '''
+    
+    gene_list=overlap_matrix.groupby('gene')['rsids'].apply(list).reset_index(name='snps')
+    gene_list=pd.merge(gene_list,gene_cor,on='gene',how='left')
+    gene_id=mg.querymany(gene_list['gene'], scopes='symbol', fields='entrezgene', species='human', as_dataframe=True)['entrezgene']
+    gene_id=gene_id.to_frame().reset_index()
+    gene_id.dropna(inplace=True)
+    gene_id=gene_id.rename(columns={'query':'gene'})
+    convert=pd.merge(gene_list,gene_id,on='gene',how='left')
+    convert.drop(columns=['gene'],inplace=True)
+    convert['snps']=convert['snps'].astype(str)
+    convert['snps']=convert['snps'].str.replace("nan","")
+    convert['snps']=convert['snps'].str.replace(',',' ')
+    convert['snps']=convert['snps'].str.replace('[','')
+    convert['snps']=convert['snps'].str.replace(']','')
+    convert['snps']=convert['snps'].str.replace("'","")
+    convert.dropna(inplace=True)
+    convert.dropna(subset=['g_cor'],inplace=True)
+    convert.rename(columns={'entrezgene':'GENE'},inplace=True)
+
+    cmagma=pd.merge(dmagma_file,convert,on='GENE',how='outer')
+    cmagma['POS']=cmagma['POS'].fillna(cmagma['g_cor'])
+    cmagma['SNPs']=cmagma['SNPs'].astype(str)
+    cmagma['snps']=cmagma['snps'].astype(str)
+    cmagma['SNPs'] = cmagma.apply(lambda x: str(x['SNPs']) + ' ' + str(x['snps']), axis=1)
+    cmagma['SNPs']=cmagma['SNPs'].str.replace('nan',' ')
+    cmagma['SNPs']=cmagma['SNPs'].str.replace('[','').str.replace(']','').str.replace("'",'')
+    cmagma=cmagma[['GENE','POS','SNPs']]
+    cmagma.to_csv(disease_name+'scemagma.genes.annot',index=False,header=False,sep='\t',quoting=csv.QUOTE_NONE)
+    return cmagma
+
+
+
+def save_dict_gs(gs_path: str, dict_gs: dict) -> None:
+    """
+    Save dict_gs to gs file (.gs file).
+    df_gs: Dict = {
+        "TRAIT": [],
+        "GENESET": [],}
     """
     df_gs: Dict = {
         "TRAIT": [],
@@ -374,9 +416,9 @@ def save_gs(gene_file,disease_name,gs_path):
 
     '''
     OPTIONAL
-    Save gene analysis results as .gs file
+    Directly save scemagma gene analysis results into .gs file
 
-    gene_file: gene analysis results from cmagma  rename to txt file
+    gene_file: gene analysis results from scemagma  rename to txt file
     disease_name: disease name interested from GWAS
     gs_path: output path for .gs file
 
@@ -402,7 +444,7 @@ def save_gs(gene_file,disease_name,gs_path):
         df_gs["TRAIT"].append(trait)
         if isinstance(dict_gs[trait], tuple):
             df_gs["GENESET"].append(
-                ",".join([g + ":" + str(w) for g, w in zip(*dict_gs[trait])])
+                ",".join([str(g) + ":" + str(w) for g, w in zip(*dict_gs[trait])])
             )
         else:
             df_gs["GENESET"].append(",".join(dict_gs[trait]))
@@ -455,7 +497,7 @@ def drop_dup(gene_file):
     return gene_file
 
 
-def scads(adata,overlap_matrix,cmagma_result,disease_name):
+def scedrs_atac(adata,overlap_matrix,cmagma_result,disease_name):
 
     '''
     adata: AnnData object
@@ -464,9 +506,9 @@ def scads(adata,overlap_matrix,cmagma_result,disease_name):
     For each peak, determine the lowest p-value of all SNPs that overlap with it.
     peak_weights can also get from get_peak_weights function 
     
-    cmagma_result: output from cmagma pipline gene analysis results
+    scemagma_result: output from scemagma pipline gene analysis results
     see /magma \ --bfile /g1000_eur \--pval {gwas} use='rsids,pval' N=n\
-    --gene-annot {output from annotate fuction *.cmagma.genes.annot} \--out outfile
+    --gene-annot {output from annotate fuction *.scemagma.genes.annot} \--out outfile
     
     disease_name: disease name interested from GWAS
 
@@ -496,10 +538,124 @@ def scads(adata,overlap_matrix,cmagma_result,disease_name):
     return dict_df_score
 
 
+def load_gs(gs_path: str) -> dict:
+    """
+    Load gene set file (.gs file).
+    """
+    df_gs = pd.read_csv(gs_path, sep="\t")
+    dict_gs = {}
+    for _, row in df_gs.iterrows():
+        trait = row["TRAIT"]
+        geneset = row["GENESET"].split(",")
+        geneset = {g.split(":")[0]: float(g.split(":")[1]) for g in geneset}
+        dict_gs[trait] = geneset
+    return dict_gs
+
+def scedrs_rna(adata,gs_path):
+
+    '''
+    adata: AnnData object
+
+    gs_path: output from scemagma pipline gene analysis results
+    or any gene set you interested in .gs format 
+    use save_gs function to save gene set file as .gs format
+    
+    disease_name: disease name interested from GWAS
+
+    '''
+    df_gs = load_gs(gs_path)
+        
+    dict_df_score = dict()
+    scdrs.preprocess(adata,  n_mean_bin=20, n_var_bin=20, copy=False)
+    for trait in df_gs:
+        gene_list, gene_weights = df_gs[trait]
+        dict_df_score[trait] = scdrs.score_cell(data=adata,
+        gene_list=gene_list,
+        gene_weight=gene_weights,
+        ctrl_match_key="mean_var",
+        n_ctrl=1000,
+        weight_opt="vs",
+        return_ctrl_raw_score=False,
+        return_ctrl_norm_score=True,
+        verbose=False,
+    )
+    return dict_df_score
+
         
 #########################################################################################
 #####                          Statistical Analysis                                ######
 #########################################################################################
+
+def table_output(adata,overlap_matrix,gs_file,anno,omic,group):
+
+    """
+    adata: AnnData
+    overlap_matrix: pd.DataFrame from scv.snp_peak output
+    gs_file: str, path to the risk gene .gs file
+    anno: anno = scv.annotate()
+    omic: ATAC or RNA
+    group: The cell type you focus on (Typically the cell type have significant association with the disease)
+    """
+
+    if omic=='ATAC':
+        epi.tl.rank_features(adata, 'celltype', omic='ATAC')
+        diff_peaks =adata.uns['rank_features_groups']['names']
+        diff_peaks = pd.DataFrame(diff_peaks)
+        overlap_matrix['peak']=overlap_matrix['chr'].astype(str)+'-'+overlap_matrix['start'].astype(str)+'-'+overlap_matrix['end'].astype(str)
+        gs_df=load_gs(gs_file)
+        gs_df=pd.DataFrame(gs_df)
+        group_result=diff_peaks[[group]][diff_peaks[[group]][group].isin(gs_df.index)]
+        results=overlap_matrix[overlap_matrix['peak'].isin(group_result[group])]
+        results=results[['peak','gene']]
+        trans=mg.querymany(anno['GENE'], scopes='entrezgene', fields='symbol', species='human', as_dataframe=True)
+        gene_id=trans['symbol']
+        gene_id=gene_id.to_frame().reset_index()
+        gene_id.dropna(inplace=True)
+        gene_id=gene_id.rename(columns={'query':'GENE'})
+        convert=pd.merge(anno,gene_id,on='GENE',how='left')
+        convert=convert.rename(columns={'symbol':'gene'})
+        convert=convert[['gene','SNPs']]
+        output_list=pd.merge(results,convert,on='gene',how='left')
+        output=output_list.groupby('peak').agg('first')
+        output.to_csv(group+'_atac_output.csv',sep='\t',header=True,index=True)
+    
+    if omic=='RNA':
+        sc.pp.normalize_total(adata, target_sum=1e4)
+        sc.pp.log1p(adata)
+        sc.tl.rank_genes_groups(adata, "celltype", method="wilcoxon",use_raw=False)
+        diff_genes=pd.DataFrame(adata.uns["rank_genes_groups"]["names"])
+        #get top 100 genes
+        diff_genes=diff_genes.iloc[:100,:]
+        diff_genes=pd.DataFrame(diff_genes)
+        gs_df=load_gs(gs_file)
+        gs_df=pd.DataFrame(gs_df)
+        group_result=diff_genes[[group]][diff_genes[[group]][group].isin(gs_df.index)]
+        results=overlap_matrix[overlap_matrix['gene'].isin(group_result[group])]
+        results=results[['gene','peak']]
+        trans=mg.querymany(anno['GENE'], scopes='entrezgene', fields='symbol', species='human', as_dataframe=True)
+        gene_id=trans['symbol']
+        gene_id=gene_id.to_frame().reset_index()
+        gene_id.dropna(inplace=True)
+        gene_id=gene_id.rename(columns={'query':'GENE'})
+        convert=pd.merge(anno,gene_id,on='GENE',how='left')
+        convert=convert.rename(columns={'symbol':'gene'})
+        
+        convert=convert[['gene','SNPs']]
+        output_list=pd.merge(results,convert,on='gene',how='left')
+        enr = gp.enrichr(gene_list=list(output_list['gene'].unique()),
+                 gene_sets=['MSigDB_Hallmark_2020','KEGG_2021_Human'],
+                 organism='human', 
+                 outdir=None,
+                )
+        enr.results.to_csv(group+'_GO_output.csv',sep='\t',index=False)
+        output=output_list
+        output.to_csv(group+'_rna_output.csv',sep='\t',header=True,index=True)
+    
+
+
+    return output
+
+
 
 
 def stat_analysis(
@@ -578,6 +734,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 
+
 def plot_group_stats(dict_df_stats=None):
 
     
@@ -585,8 +742,9 @@ def plot_group_stats(dict_df_stats=None):
     # compile df_fdr_prop, df_assoc_fdr, df_hetero_fdr from dict_df_stats
     df_fdr_prop = pd.concat(
         [
-            -np.log10(dict_df_stats[trait]["assoc_mcp"])+1 
-            
+            #-np.log10(dict_df_stats[trait]["assoc_mcp"])+1 
+            #q10
+            dict_df_stats[trait]['q10']
             for trait in trait_list
         ],
         axis=1,
@@ -598,9 +756,7 @@ def plot_group_stats(dict_df_stats=None):
     ).T
 
     df_assoc_fdr = pd.DataFrame(
-        multipletests(df_assoc_fdr.values.flatten(), method="fdr_bh")[1].reshape(
-            df_assoc_fdr.shape
-        ),
+        df_assoc_fdr.values,
         index=df_assoc_fdr.index,
         columns=df_assoc_fdr.columns,
     )
@@ -610,24 +766,22 @@ def plot_group_stats(dict_df_stats=None):
         [dict_df_stats[trait]["assoc_mcp"] for trait in trait_list], axis=1
     ).T
     df_hetero_fdr = pd.DataFrame(
-        multipletests(df_hetero_fdr.values.flatten(), method="fdr_bh")[1].reshape(
-            df_hetero_fdr.shape
-        ),
+       df_hetero_fdr.values,
             index=df_hetero_fdr.index,
             columns=df_hetero_fdr.columns,
         )
     
-
-    df_fdr_prop.index = trait_list
-
-    df_assoc_fdr.index = trait_list
-  
-    df_hetero_fdr.index = trait_list
     
+    df_fdr_prop.index = trait_list
+ 
+    df_assoc_fdr.index = trait_list
+ 
+    df_hetero_fdr.index = trait_list
+  
 
-    df_hetero_fdr = df_hetero_fdr.map(lambda x: "" if x < 0.05 else "")
+    df_hetero_fdr = df_hetero_fdr.applymap(lambda x: "" if x < 0.05 else "")
     df_hetero_fdr[df_assoc_fdr > 0.1] = ""
-
+   
     fig, ax = plot_heatmap(
         df_fdr_prop,
         squaresize=40,
@@ -642,24 +796,20 @@ def plot_group_stats(dict_df_stats=None):
 
     small_squares(
         ax,
-        pos=[(y, x) for x, y in zip(*np.where(df_assoc_fdr < 0.05))],
+        pos=[(y, x) for x, y in zip(*np.where(df_assoc_fdr < 0.01))],
         size=0.6,
         linewidth=0.5,
     )
 
     cb = ax.collections[0].colorbar
     cb.ax.tick_params(labelsize=4)
-    #cb.set_ticks([-4.0, 0, 4.0])
-    #cb.ax.set_xticklabels(["-4", "0", "4"], size=7)
-    #cb.ax.set_title("Prop. of sig. cells (FDR < 0.1)", fontsize=8)
-    cb.ax.set_title("-log10 P", fontsize=8)
+
+    cb.ax.set_title("Risk Score", fontsize=8)
     cb.outline.set_edgecolor("black")
     cb.outline.set_linewidth(1)
 
     plt.tight_layout()
-    
-    
-    
+
 def discrete_cmap(N, base_cmap=None, start_white=True):
     base = plt.colormaps.get_cmap(base_cmap)
     color_list = base(np.linspace(0, 1, N))
@@ -687,10 +837,10 @@ def plot_heatmap(
     xticklabels_rotation=90,
     colormap_n_bin=8,
 ):
-    figwidth = df.shape[1] * (squaresize) / float(dpi)
-    figheight = df.shape[0] * squaresize / float(dpi)
-    #figwidth = 8
-    #figheight = 8
+    #figwidth = df.shape[1] * (squaresize) / float(dpi)
+    #figheight = df.shape[0] * squaresize / float(dpi)
+    figwidth = 6
+    figheight = 6
     fig, ax = plt.subplots(1, figsize=(figwidth, figheight), dpi=dpi)
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax.set_facecolor("silver")
@@ -702,7 +852,7 @@ def plot_heatmap(
         annot=heatmap_annot,
         annot_kws=heatmap_annot_kws,
         fmt="",
-        cmap=discrete_cmap(colormap_n_bin, "RdYlBu_r"),
+        cmap=discrete_cmap(colormap_n_bin, "YlOrBr"),
         linewidths=heatmap_linewidths,
         linecolor=heatmap_linecolor,
         square=True,
@@ -731,7 +881,6 @@ def plot_heatmap(
     for t in ax.get_xticklabels():
         t.set_transform(t.get_transform() + trans)
     return fig, ax
-    
     
 def small_squares(ax, pos, size=1, linewidth=0.8):
     """
