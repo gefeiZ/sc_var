@@ -24,7 +24,8 @@ check https://pypi.org/project/sc-var/
 
 
 
-[Fig1.pdf](https://github.com/user-attachments/files/16885059/Fig1.pdf)
+![Fig1](https://github.com/user-attachments/assets/ccb0e726-225b-4cfa-a71e-2714c92c76b9)
+
 
 
 
