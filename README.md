@@ -39,9 +39,9 @@ Check Vignettes for details
 
 Data request: 
 
-Single cell data &
+1.Single cell data 
 
-Peak co-accessibility Data or Peak to gene linkage Data (which could obtained from single cell data using cicero or signac) &
+2.Peak co-accessibility Data or Peak to gene linkage Data (which could obtained from single cell data using cicero or signac)
 
-GWAS data 
+3.GWAS data 
 
