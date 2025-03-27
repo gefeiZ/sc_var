@@ -522,7 +522,7 @@ def scedrs_atac(adata,overlap_matrix,cmagma_result,disease_name):
     peak_weights=peak_weights.rename(columns={'weight':disease_name})
     dict_gs = {disease_name: (peak_weights['GENE'].tolist(), peak_weights[disease_name].tolist())}
     dict_df_score = dict()
-    scdrs.preprocess(adata,  n_mean_bin=20, n_var_bin=20, copy=False)
+
     for trait in dict_gs:
         gene_list, gene_weights = dict_gs[trait]
         dict_df_score[trait] = scdrs.score_cell(data=adata,
@@ -698,13 +698,13 @@ def stat_analysis(
             # Basic info
             df_res.loc[group, ["n_cell", "n_ctrl"]] = [len(group_cell_list), n_ctrl]
 
-            # Number of FDR < fdr_threshold cells in each group
+        
             for fdr_threshold in fdr_thresholds:
                 df_res.loc[group, f"n_fdr_{fdr_threshold}"] = (
                     df_fdr.loc[group_cell_list, "fdr"].values < fdr_threshold
                 ).sum()
 
-        # Association
+
         for group in group_list:
             group_cell_list = list(df_reg.index[df_reg[group_col] == group])
             score_q95 = np.quantile(df_reg.loc[group_cell_list, "norm_score"], 0.95)
@@ -739,11 +739,10 @@ def plot_group_stats(dict_df_stats=None):
 
     
     trait_list = list(dict_df_stats.keys())
-    # compile df_fdr_prop, df_assoc_fdr, df_hetero_fdr from dict_df_stats
+  
     df_fdr_prop = pd.concat(
         [
-            #-np.log10(dict_df_stats[trait]["assoc_mcp"])+1 
-            #q10
+        
             dict_df_stats[trait]['q10']
             for trait in trait_list
         ],
@@ -837,16 +836,14 @@ def plot_heatmap(
     xticklabels_rotation=90,
     colormap_n_bin=8,
 ):
-    #figwidth = df.shape[1] * (squaresize) / float(dpi)
-    #figheight = df.shape[0] * squaresize / float(dpi)
+
     figwidth = 6
     figheight = 6
     fig, ax = plt.subplots(1, figsize=(figwidth, figheight), dpi=dpi)
     fig.subplots_adjust(left=0, right=1, bottom=0, top=1)
     ax.set_facecolor("silver")
     ax.invert_yaxis()
-    #ax.yaxis.set_label_position("right")
-    #ax.yaxis.tick_right()
+
     sns.heatmap(
         df,
         annot=heatmap_annot,
